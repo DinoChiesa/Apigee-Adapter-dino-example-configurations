@@ -1,0 +1,52 @@
+resources:
+- "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+  name: ngrok
+  type: STRICT_DNS
+  dns_lookup_family: V4_ONLY
+  lb_policy: ROUND_ROBIN
+  dns_refresh_rate: 90s
+  load_assignment:
+    cluster_name: ngrok
+    endpoints:
+    - lb_endpoints:
+      - endpoint:
+          address:
+            socket_address:
+              address: 8eb0-50-35-82-179.ngrok.io
+              port_value: 443
+        load_balancing_weight: 2
+  transport_socket:
+    name: envoy.transport_sockets.tls
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+      common_tls_context:
+        validation_context:
+          trusted_ca:
+            filename: /usr/local/etc/openssl/cert.pem
+      sni: 8eb0-50-35-82-179.ngrok.io
+- "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+  name: cloud
+  type: STRICT_DNS
+  dns_lookup_family: V4_ONLY
+  lb_policy: ROUND_ROBIN
+  dns_refresh_rate: 90s
+  load_assignment:
+    cluster_name: cloud
+    endpoints:
+    - lb_endpoints:
+      - endpoint:
+          hostname: "echo.dchiesa.demo.altostrat.com"
+          address:
+            socket_address:
+              address: "echo.dchiesa.demo.altostrat.com"
+              port_value: 443
+        load_balancing_weight: 1
+  transport_socket:
+    name: envoy.transport_sockets.tls
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+      common_tls_context:
+        validation_context:
+          trusted_ca:
+            filename: /usr/local/etc/openssl/cert.pem
+      sni: echo.dchiesa.demo.altostrat.com

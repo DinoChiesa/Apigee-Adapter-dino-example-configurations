@@ -1,0 +1,19 @@
+    load_assignment:
+      cluster_name: service_echo
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: "echo.dchiesa.demo.altostrat.com"
+                port_value: 443
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /usr/local/etc/openssl/cert.pem
+        ## absolutely required in order to get envoy to do the TLS handshake with the upstream
+        sni: echo.dchiesa.demo.altostrat.com

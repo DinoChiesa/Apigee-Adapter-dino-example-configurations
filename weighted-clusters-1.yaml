@@ -1,0 +1,166 @@
+admin:
+  address:
+    socket_address:
+      protocol: TCP
+      address: 0.0.0.0
+      port_value: 9901
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        protocol: TCP
+        address: 0.0.0.0
+        port_value: 10000
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  # auto_host_rewrite: true, Tells envoy to use the hostname of the upstream?
+                  auto_host_rewrite: true
+                  #host_rewrite_header: "host"
+                  #host_rewrite_literal: www.envoyproxy.io
+                  weighted_clusters:
+                    clusters:
+                    - name: ngrok
+                      weight: 1
+                    - name: cloud
+                      weight: 1
+          http_filters:
+          ## force a particular hostname.  This is the only way I could get TLS upstream to cloud run, to work.
+          # - name: envoy.filters.http.lua
+          #   typed_config:
+          #     "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          #     inline_code: |
+          #       function envoy_on_request(request_handle)
+          #         request_handle:logInfo("orig Authority: "..request_handle:headers():get(":authority"))
+          #         request_handle:headers():replace(":authority", 'echo.dchiesa.demo.altostrat.com')
+          #         request_handle:logInfo("updated Authority: "..request_handle:headers():get(":authority"))
+          #       end
+          
+          # - name: envoy.filters.http.lua
+          #   typed_config:
+          #     "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+          #     inline_code: |
+          #       function envoy_on_request(request_handle)
+          #         local service = request_handle:headers():get("service")
+          #         local upstream = (service=='service1' and '8eb0-50-35-82-179.ngrok.io' or 'echo.dchiesa.demo.altostrat.com')
+          #         request_handle:logInfo("orig Authority: "..request_handle:headers():get(":authority"))
+          #         request_handle:headers():replace(":authority", upstream)
+          #         request_handle:logInfo("updated Authority: "..request_handle:headers():get(":authority"))
+          #       end
+          # - name: envoy.filters.http.header_to_metadata
+          #   typed_config:
+          #     "@type": type.googleapis.com/envoy.extensions.filters.http.header_to_metadata.v3.Config
+          #     request_rules:
+          #       - header: "service"
+          #         on_header_present:
+          #           metadata_namespace: envoy.lb
+          #           key: service
+          #           type: STRING
+          #         remove: false
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+              suppress_envoy_headers: true
+  clusters:
+  # - name: aggregate_echo_cluster
+  #   connect_timeout: 0.75s
+  #   lb_policy: CLUSTER_PROVIDED
+  #   cluster_type:
+  #     name: envoy.clusters.aggregate
+  #     typed_config:
+  #       "@type": type.googleapis.com/envoy.extensions.clusters.aggregate.v3.ClusterConfig
+  #       clusters:
+  #         # cluster primary, secondary and tertiary should be defined outside.
+  #         - ngrok
+  #         - cloud
+  - name: ngrok
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    dns_refresh_rate: 90s
+    load_assignment:
+      cluster_name: ngrok
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: 8eb0-50-35-82-179.ngrok.io
+                port_value: 443
+          load_balancing_weight: 2
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        # ---begin---
+        # Attempt to get TLS to work properly
+        #max_session_keys: 0
+        # ---end---
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /usr/local/etc/openssl/cert.pem
+            # match_typed_subject_alt_names:
+            # - san_type: DNS
+            #   matcher:
+            #     exact: "echo.dchiesa.demo.altostrat.com"
+            #     exact: "8eb0-50-35-82-179.ngrok.io"
+        #sni: www.envoyproxy.io
+        #sni: echo.dchiesa.demo.altostrat.com
+        sni: 8eb0-50-35-82-179.ngrok.io
+  - name: cloud
+    type: STRICT_DNS
+    dns_lookup_family: V4_ONLY
+    lb_policy: ROUND_ROBIN
+    dns_refresh_rate: 90s
+
+    load_assignment:
+      cluster_name: cloud
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            # ## ---begin---
+            # ## Try to get SNI/TLS upstream to work the way I think it should work
+            hostname: "echo.dchiesa.demo.altostrat.com"
+            # ## ---end---
+            address:
+              socket_address:
+                address: "echo.dchiesa.demo.altostrat.com"
+                port_value: 443
+          load_balancing_weight: 1
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        # ---begin---
+        # Attempt to get TLS to work properly
+        #max_session_keys: 0
+        # ---end---
+        common_tls_context:
+          validation_context:
+            trusted_ca:
+              filename: /usr/local/etc/openssl/cert.pem
+            # match_typed_subject_alt_names:
+            # - san_type: DNS
+            #   matcher:
+            #     exact: "echo.dchiesa.demo.altostrat.com"
+            #     exact: "8eb0-50-35-82-179.ngrok.io"
+        #sni: www.envoyproxy.io
+        sni: echo.dchiesa.demo.altostrat.com

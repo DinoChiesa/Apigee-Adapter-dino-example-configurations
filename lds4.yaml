@@ -1,0 +1,72 @@
+resources:
+- "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+  name: listener_0
+  address:
+    socket_address:
+      protocol: TCP
+      address: 0.0.0.0
+      port_value: 10000
+  filter_chains:
+  - filters:
+    - name: envoy.filters.network.http_connection_manager
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+        stat_prefix: ingress_http
+        access_log:
+        - name: envoy.access_loggers.stdout
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+        route_config:
+          name: local_route
+          virtual_hosts:
+          - name: local_service
+            domains: ["*"]
+            routes:
+            - match:
+                path: "/hello"
+              direct_response:
+                status: 404
+                body:
+                  inline_string: "not found"
+            - match:
+                prefix: "/"
+              route:
+                auto_host_rewrite: true
+                #host_rewrite_header: "host"
+                #host_rewrite_literal: www.envoyproxy.io
+                weighted_clusters:
+                  clusters:
+                  - name: ngrok
+                    weight: 1
+                  - name: cloud
+                    weight: 1
+        http_filters:
+        - name: envoy.filters.http.local_ratelimit
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            stat_prefix: http_local_rate_limiter
+            token_bucket:
+              max_tokens: 10
+              tokens_per_fill: 10
+              fill_interval: 20s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: local_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            enable_x_ratelimit_headers: DRAFT_VERSION_03
+            # response_headers_to_add:
+            #   - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+            #     header:
+            #       key: x-local-rate-limit
+            #       value: 'true'
+            local_rate_limit_per_downstream_connection: false
+        - name: envoy.filters.http.router
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+            suppress_envoy_headers: true
